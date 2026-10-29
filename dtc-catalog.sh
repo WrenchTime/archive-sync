@@ -18,6 +18,22 @@ TARGET="$ARCHIVE_ORG/dtc-catalog"
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
+if ! gh api "repos/$SOURCE" --silent 2>/dev/null; then
+    echo "$SOURCE is not forked yet, skipping the DTC catalog"
+    exit 0
+fi
+if ! gh api "repos/$TARGET" --silent 2>/dev/null; then
+    if (( DRY_RUN )); then echo "Dry run: $TARGET would be created"; exit 0; fi
+    if ! out=$(gh repo create "$TARGET" --public --disable-wiki --disable-issues \
+        --description "Generic OBD-II trouble-code titles the WrenchTime app downloads, built daily from the OBDex fork. CC0." 2>&1); then
+        if grep -qiE 'submitted too quickly|too many repositories' <<<"$out"; then
+            echo "GitHub's repository creation limit reached, the next run creates $TARGET"
+            exit 0
+        fi
+        echo "$out" >&2; exit 1
+    fi
+fi
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 

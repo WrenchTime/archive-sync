@@ -20,6 +20,10 @@ ARCHIVE_ORG="${ARCHIVE_ORG:-WrenchTime}"
 UPSTREAM_ORGS=(OBDb)
 EXTRA_FORKS=(meatpiHQ/wican-fw foerbsnavi/OBDex)
 MIRRORS=(mcgyver78/WiCAN_W906)
+# Forked before everything else: what the app reads directly. GitHub caps how
+# many repositories an owner may create in a while, so the first run cannot
+# fork everything, and these must not wait behind 900 others.
+PRIORITY=(OBDb/obdb.community meatpiHQ/wican-fw foerbsnavi/OBDex)
 # Names the archive uses for itself; an upstream repository with one of these
 # names is forked as "<upstream owner>-<name>" instead.
 RESERVED=(.github archive-sync)
@@ -29,9 +33,14 @@ DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
 summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
-forked=0; failed_in_a_row=0; fork_failed=(); synced=0; unchanged=0; sync_failed=(); mirrored=0; mirror_failed=()
+forked=0; failed_in_a_row=0; fork_failed=(); deferred=0; creation_paused=0; synced=0; unchanged=0; sync_failed=(); mirrored=0; mirror_failed=()
 
 log() { printf '%s\n' "$*" >&2; }
+
+# GitHub's cap on creating repositories: not a failure, the next run goes on.
+is_creation_limit() {
+    grep -qiE 'submitted too quickly|too many repositories' <<<"$1"
+}
 
 is_reserved() {
     local name="$1" r
@@ -75,14 +84,55 @@ done
 upstreams+=("${EXTRA_FORKS[@]}")
 log "  ${#upstreams[@]} upstream repositories"
 
-log "Forking what is missing"
+# Priority first, then everything else once.
+ordered=("${PRIORITY[@]}")
 for up in "${upstreams[@]}"; do
+    [[ " ${PRIORITY[*]} " == *" $up "* ]] || ordered+=("$up")
+done
+
+log "Mirroring"
+for up in "${MIRRORS[@]}"; do
+    name="${up##*/}"
+    log "  mirror $up -> $ARCHIVE_ORG/$name"
+    (( DRY_RUN )) && continue
+    if [[ -z "${archive_branch[$name]+x}" ]]; then
+        description=$(gh api "repos/$up" --jq '.description // ""' 2>/dev/null)
+        if ! out=$(gh repo create "$ARCHIVE_ORG/$name" --public --disable-wiki --disable-issues \
+            --description "Mirror of $up. ${description}" 2>&1); then
+            if is_creation_limit "$out"; then
+                log "  GitHub's repository creation limit reached, the next run goes on"
+                creation_paused=1; deferred=$((deferred + 1))
+            else
+                log "    failed: $out"; mirror_failed+=("$up")
+            fi
+            continue
+        fi
+    fi
+    work=$(mktemp -d)
+    if git clone --quiet --bare "https://github.com/$up.git" "$work/repo.git" &&
+        git -C "$work/repo.git" push --quiet \
+            "https://x-access-token:${GH_TOKEN}@github.com/$ARCHIVE_ORG/$name.git" \
+            'refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*'; then
+        mirrored=$((mirrored + 1))
+    else
+        mirror_failed+=("$up")
+    fi
+    rm -rf "$work"
+done
+
+log "Forking what is missing"
+for up in "${ordered[@]}"; do
     name=$(fork_name "$up")
     [[ -n "${archive_branch[$name]+x}" ]] && continue
+    if (( creation_paused )); then deferred=$((deferred + 1)); continue; fi
     log "  fork $up -> $ARCHIVE_ORG/$name"
     if (( DRY_RUN )); then forked=$((forked + 1)); continue; fi
     if out=$(api_write -X POST "repos/$up/forks" -f organization="$ARCHIVE_ORG" -f name="$name" -F default_branch_only=false); then
         forked=$((forked + 1)); failed_in_a_row=0
+    elif is_creation_limit "$out"; then
+        log "  GitHub's repository creation limit reached, the next run goes on"
+        creation_paused=1; deferred=$((deferred + 1))
+        continue
     else
         log "    failed: $out"; fork_failed+=("$up")
         # The same refusal on every fork means the token, not the repository.
@@ -103,27 +153,6 @@ for name in "${!archive_branch[@]}"; do
     fi
 done
 
-log "Mirroring"
-for up in "${MIRRORS[@]}"; do
-    name="${up##*/}"
-    log "  mirror $up -> $ARCHIVE_ORG/$name"
-    (( DRY_RUN )) && continue
-    if [[ -z "${archive_branch[$name]+x}" ]]; then
-        description=$(gh api "repos/$up" --jq '.description // ""' 2>/dev/null)
-        gh repo create "$ARCHIVE_ORG/$name" --public --disable-wiki --disable-issues \
-            --description "Mirror of $up. ${description}" >/dev/null || { mirror_failed+=("$up"); continue; }
-    fi
-    work=$(mktemp -d)
-    if git clone --quiet --bare "https://github.com/$up.git" "$work/repo.git" &&
-        git -C "$work/repo.git" push --quiet \
-            "https://x-access-token:${GH_TOKEN}@github.com/$ARCHIVE_ORG/$name.git" \
-            'refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*'; then
-        mirrored=$((mirrored + 1))
-    else
-        mirror_failed+=("$up")
-    fi
-    rm -rf "$work"
-done
 
 {
     echo "## Archive sync"
@@ -135,6 +164,7 @@ done
     echo "| Forks updated | $synced |"
     echo "| Forks already current | $unchanged |"
     echo "| Mirrors pushed | $mirrored |"
+    echo "| Left for the next run (creation limit) | $deferred |"
     echo "| Fork failures | ${#fork_failed[@]} |"
     echo "| Sync failures | ${#sync_failed[@]} |"
     echo "| Mirror failures | ${#mirror_failed[@]} |"
