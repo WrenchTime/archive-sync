@@ -27,3 +27,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.ARCHIVE_TOKEN }}
         run: bash sync.sh ${{ inputs.dry_run && '--dry-run' || '' }}
+      - uses: oven-sh/setup-bun@v2
+        if: ${{ !cancelled() }}
+      # After the sync, so it reads today's OBDex, and even when the sync
+      # reported failures on other repositories.
+      - name: DTC catalog
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.ARCHIVE_TOKEN }}
+        run: bash dtc-catalog.sh ${{ inputs.dry_run && '--dry-run' || '' }}

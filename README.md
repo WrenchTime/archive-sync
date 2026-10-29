@@ -19,6 +19,8 @@ An upstream repository named like one of the archive's own (`.github`, `archive-
 2. fast-forwards every fork to its upstream;
 3. pushes the mirrors' branches and tags.
 
+Then `dtc-catalog.sh` reads the YAML of the `OBDex` fork with Bun (`dtc-catalog.ts`; nothing of OBDex is executed) and publishes the short title of every generic trouble code, one JSON per language, to [dtc-catalog](https://github.com/WrenchTime/dtc-catalog), which the app downloads. It commits only when a code or a title changed.
+
 When an upstream disappears its fork stops syncing and keeps the last state it had, and the run lists it under sync failures without failing.
 
 To run it from a Mac instead, with your own `gh` login: `./run-local.sh` (Docker required; `--dry-run` works here too).
