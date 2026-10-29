@@ -13,7 +13,7 @@ An upstream repository named like one of the archive's own (`.github`, `archive-
 
 ## How it runs
 
-`.github/workflows/sync.yml` runs `sync.sh` every Monday and on demand (with an optional dry run). Each run:
+`.github/workflows/sync.yml` runs `sync.sh` every day and on demand (with an optional dry run). Each run:
 
 1. forks any upstream repository not yet in the archive;
 2. fast-forwards every fork to its upstream;
