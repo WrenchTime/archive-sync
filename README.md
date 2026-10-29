@@ -21,6 +21,8 @@ An upstream repository named like one of the archive's own (`.github`, `archive-
 
 When an upstream disappears its fork stops syncing and keeps the last state it had, and the run lists it under sync failures without failing.
 
+To run it from a Mac instead, with your own `gh` login: `./run-local.sh` (Docker required; `--dry-run` works here too).
+
 ## Setup
 
 - Organization secret or repository secret `ARCHIVE_TOKEN`: a fine-grained personal access token whose resource owner is `WrenchTime`, on all repositories, with **Administration**, **Contents** and **Workflows** read and write. It expires after a year at most; renew it before then.
