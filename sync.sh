@@ -27,7 +27,9 @@ PRIORITY=(OBDb/obdb.community meatpiHQ/wican-fw foerbsnavi/OBDex)
 # Names the archive uses for itself; an upstream repository with one of these
 # names is forked as "<upstream owner>-<name>" instead.
 RESERVED=(.github archive-sync)
-FORK_PAUSE="${FORK_PAUSE:-3}"
+# GitHub stopped repository creation after about 275 in an hour (2026-10-29)
+# and let it go again 34 minutes later: 15 s between forks stays under it.
+FORK_PAUSE="${FORK_PAUSE:-15}"
 
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
