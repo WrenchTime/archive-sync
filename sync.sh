@@ -29,7 +29,7 @@ DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
 summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
-forked=0; fork_failed=(); synced=0; unchanged=0; sync_failed=(); mirrored=0; mirror_failed=()
+forked=0; failed_in_a_row=0; fork_failed=(); synced=0; unchanged=0; sync_failed=(); mirrored=0; mirror_failed=()
 
 log() { printf '%s\n' "$*" >&2; }
 
@@ -82,9 +82,12 @@ for up in "${upstreams[@]}"; do
     log "  fork $up -> $ARCHIVE_ORG/$name"
     if (( DRY_RUN )); then forked=$((forked + 1)); continue; fi
     if out=$(api_write -X POST "repos/$up/forks" -f organization="$ARCHIVE_ORG" -f name="$name" -F default_branch_only=false); then
-        forked=$((forked + 1))
+        forked=$((forked + 1)); failed_in_a_row=0
     else
         log "    failed: $out"; fork_failed+=("$up")
+        # The same refusal on every fork means the token, not the repository.
+        failed_in_a_row=$((failed_in_a_row + 1))
+        if (( failed_in_a_row >= 5 )); then log "  5 forks failed in a row, stopping"; break; fi
     fi
     sleep "$FORK_PAUSE"
 done
