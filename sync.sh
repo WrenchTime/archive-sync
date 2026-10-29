@@ -50,8 +50,8 @@ api_write() {
     local attempt out
     for attempt in 1 2 3 4; do
         if out=$(gh api "$@" 2>&1); then printf '%s' "$out"; return 0; fi
-        if grep -qiE 'secondary rate limit|abuse|HTTP 429|HTTP 403' <<<"$out"; then
-            log "  rate limited, waiting $((attempt * 90)) s"
+        if grep -qiE 'rate limit|abuse detection|HTTP 429' <<<"$out"; then
+            log "  rate limited, waiting $((attempt * 90)) s: $out"
             sleep $((attempt * 90))
             continue
         fi
